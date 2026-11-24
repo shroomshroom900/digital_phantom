@@ -52,8 +52,12 @@ class Mesh:
     pass
 
 
-def build_cylinder_mesh(h_xy=C.H_XY, h_z=C.H_Z, length=C.LENGTH):
+def build_cylinder_mesh(h_xy=C.H_XY, h_z=C.H_Z, length=C.LENGTH, radii=None, sigma=None):
     """Build the four-layer cylinder mesh.
+
+    radii : optional (R_bone, R_muscle, R_fat, R_skin) in metres; default = config.
+    sigma : optional {label: (sx, sy, sz)} conductivity table; default = config.SIGMA.
+            (Both exist so the web app can pass per-run values without editing config.)
 
     Returns a Mesh object with
       .nodes   (n_v, 3)  float  vertex coordinates in metres
@@ -64,8 +68,10 @@ def build_cylinder_mesh(h_xy=C.H_XY, h_z=C.H_Z, length=C.LENGTH):
       plus the underlying grid info (needed to FIND which tet contains a
       point quickly -- used in Stage 2 for the "basis source" idea).
     """
+    r_bone, r_muscle, r_fat, r_skin = (C.R_BONE, C.R_MUSCLE, C.R_FAT, C.R_SKIN) if radii is None else radii
+
     # ---- 1. regular grid of boxes covering the bounding box of the limb ----
-    n_xy = int(round(2 * C.R_SKIN / h_xy))        # boxes across the diameter
+    n_xy = int(round(2 * r_skin / h_xy))        # boxes across the diameter
     n_z = int(round(length / h_z))                # boxes along the length
     x0 = -n_xy * h_xy / 2.0                       # grid starts at -x0 .. +x0
     z0 = -n_z * h_z / 2.0                         # centred on z = 0
@@ -85,10 +91,10 @@ def build_cylinder_mesh(h_xy=C.H_XY, h_z=C.H_Z, length=C.LENGTH):
     # Tissue label of every (i, j) column of boxes (does not depend on z,
     # because the cylinder is uniform along its length).
     box_label = np.full(RC.shape, -1, dtype=np.int8)       # -1 = outside
-    box_label[RC <= C.R_SKIN] = C.SKIN
-    box_label[RC <= C.R_FAT] = C.FAT
-    box_label[RC <= C.R_MUSCLE] = C.MUSCLE
-    box_label[RC <= C.R_BONE] = C.BONE
+    box_label[RC <= r_skin] = C.SKIN
+    box_label[RC <= r_fat] = C.FAT
+    box_label[RC <= r_muscle] = C.MUSCLE
+    box_label[RC <= r_bone] = C.BONE
     inside = box_label >= 0                                 # (n_xy, n_xy)
 
     ii, jj = np.nonzero(inside)                             # kept columns
@@ -133,7 +139,7 @@ def build_cylinder_mesh(h_xy=C.H_XY, h_z=C.H_Z, length=C.LENGTH):
 
     m = Mesh()
     m.nodes, m.tets, m.labels = nodes, tets, labels
-    m.sigma = C.sigma_array(labels)
+    m.sigma = C.sigma_array(labels, sigma)
     m.vol = vol
     # grid bookkeeping (used later to locate points)
     m.h_xy, m.h_z = h_xy, h_z
@@ -142,6 +148,7 @@ def build_cylinder_mesh(h_xy=C.H_XY, h_z=C.H_Z, length=C.LENGTH):
     m.box_label = box_label            # (n_xy, n_xy) tissue per column
     m.col_index = col_index            # (n_xy, n_xy) kept-column number or -1
     m.length = length
+    m.radii = (r_bone, r_muscle, r_fat, r_skin)
     return m
 
 

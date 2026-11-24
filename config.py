@@ -116,11 +116,60 @@ RNG_SEED = 2023       # makes every random choice reproducible
 FS = 2000.0           # Hz, sampling frequency of simulated signals [PROMPT]
 
 
-def sigma_array(labels):
+def sigma_array(labels, sigma=None):
     """Look up the diagonal conductivity (sx, sy, sz) for each tet.
 
     labels : (n_tets,) int array of tissue labels
+    sigma  : optional {label: (sx, sy, sz)} table; default = SIGMA above
+             (the interactive app passes its own per-run table so it never
+             has to modify this module while a simulation is running)
     returns: (n_tets, 3) float array, in S/m
     """
-    table = np.array([SIGMA[k] for k in range(4)])   # shape (4, 3)
+    sigma = SIGMA if sigma is None else sigma
+    table = np.array([sigma[k] for k in range(4)], dtype=float)   # shape (4, 3)
     return table[labels]
+
+
+# ----------------------------------------------------------------------
+# 5. Provenance of the numbers above, for the interactive app (app/params.py)
+# ----------------------------------------------------------------------
+# One entry per value the web app exposes: (tag, explanation).  The values
+# themselves stay in the sections above; this table only records where they
+# come from, so the app can show it next to every control.
+PROVENANCE = {
+    "R_BONE":       ("[PAPER]",   "Cylindrical-model radii, Maksymenko et al. 2023, Methods: "
+                                  "'Comparison with the cylindrical analytical solution'."),
+    "R_MUSCLE":     ("[PAPER]",   "Same source as R_BONE."),
+    "R_FAT":        ("[PAPER]",   "Same source as R_BONE (fat thickness = R_FAT - R_MUSCLE = 3 mm)."),
+    "R_SKIN":       ("[PAPER]",   "Same source as R_BONE (skin thickness = R_SKIN - R_FAT = 1 mm)."),
+    "LENGTH":       ("[ASSUMED]", "Paper only says 'sufficiently longer than the fibre and the array'."),
+    "H_XY":         ("[ASSUMED]", "Structured grid instead of the paper's CGAL mesh; 1 mm keeps the "
+                                  "1 mm skin at least one box thick."),
+    "H_Z":          ("[ASSUMED]", "Field varies slowly along the fibres."),
+    "SIGMA_BONE":   ("[ASSUMED]", "Literature value quoted from memory (Farina et al. 2004 tradition); "
+                                  "not checked against a source."),
+    "SIGMA_MUSCLE_T": ("[ASSUMED]", "Across fibres; same caveat as SIGMA_BONE."),
+    "SIGMA_MUSCLE_L": ("[ASSUMED]", "Along fibres (z); same caveat as SIGMA_BONE."),
+    "SIGMA_FAT":    ("[ASSUMED]", "Same caveat as SIGMA_BONE."),
+    "SIGMA_SKIN":   ("[ASSUMED]", "Same caveat as SIGMA_BONE."),
+    "N_ELEC_LINEAR": ("[ASSUMED]", "Experiment A array; spacing not given in the paper."),
+    "ELEC_SPACING": ("[ASSUMED]", "Experiment A array; spacing not given in the paper."),
+    "ELEC_THETA":   ("[ASSUMED]", "Array placed on the +x side (angle 0), as in stage 2/3."),
+    "ELEC_Z":       ("[ASSUMED]", "Array centred on z = 0 as in stage 2/3."),
+    "ELEC_ORIENT":  ("[ASSUMED]", "Array axis along z (orientation 0) as in stage 2/3; app-only control."),
+    "FIBRE_DEPTH":  ("[ASSUMED]", "Example fibre of experiment A."),
+    "FIBRE_THETA":  ("[ASSUMED]", "Fibre at angle 0 (y = 0) as in stage 3; app-only control."),
+    "NMJ_Z":        ("[ASSUMED]", "NMJ between electrodes 4 and 5 (paper Fig. 3a layout)."),
+    "L1":           ("[ASSUMED]", "NMJ -> right tendon."),
+    "L2":           ("[ASSUMED]", "NMJ -> left tendon."),
+    "CV":           ("[ASSUMED]", "Typical 3-5 m/s."),
+    "TAPER":        ("[ASSUMED]", "Paper only says 'Tukey window'."),
+    "FIBRE_RADIUS": ("[ASSUMED]", "Typical literature value (50 um diameter)."),
+    "SIGMA_IN":     ("[ASSUMED]", "Plonsey/Farina intracellular conductivity."),
+    "FIBRE_DZ":     ("[ASSUMED]", "Fibre cell length for Eq. (10)."),
+    "FS_SINGLE":    ("[ASSUMED]", "10 kHz so a ~2.5 ms action potential has enough samples to view."),
+    "DURATION_SINGLE": ("[ASSUMED]", "30 ms window used by stage 3."),
+    "CG_RTOL":      ("[ASSUMED]", "Conjugate-gradient relative tolerance used by fem.adjoint_K."),
+}
+DURATION_SINGLE = 0.030   # s, single-fibre simulation window used by stage 3 [ASSUMED]
+CG_RTOL = 1e-8            # relative CG tolerance (default of fem.adjoint_K)    [ASSUMED]

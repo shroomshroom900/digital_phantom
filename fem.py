@@ -187,19 +187,20 @@ def selection_matrix(m, pts):
     return sp.csr_matrix((lam.ravel(), (rows, cols)), shape=(ne, len(m.nodes)))
 
 
-def skin_electrode_positions(m, theta, z):
+def skin_electrode_positions(m, theta, z, r_skin=None):
     """Electrode positions on the outer skin surface at angle theta, height z.
 
     Our skin has a staircase edge, so a point at exactly r = 2.4 cm may fall
     outside the mesh.  We start at the nominal radius and step inwards in
     0.1 mm steps until the point lies inside the mesh: the electrode then
     touches the (staircase) outer surface.  [ASSUMED: point electrodes]
+    r_skin: starting radius; default = config.R_SKIN (the web app passes its own).
     """
     theta = np.atleast_1d(theta) * np.ones_like(np.atleast_1d(z), dtype=float)
     z = np.atleast_1d(z) * np.ones_like(theta)
     out = np.empty((len(z), 3))
     for n in range(len(z)):
-        r = C.R_SKIN
+        r = C.R_SKIN if r_skin is None else r_skin
         while True:
             p = np.array([[r * np.cos(theta[n]), r * np.sin(theta[n]), z[n]]])
             if locate_points(m, p)[2][0]:

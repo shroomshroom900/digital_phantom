@@ -14,6 +14,94 @@ python3 run_all.py --skip-timing   # stages 1-4 only (stage 5 is the slow one)
 python3 stage3_single_fibre.py     # or one stage at a time (stage 3 needs stage 2 first)
 ```
 
+## Interactive digital phantom (web app)
+
+A local web application on top of Stages 1-3: explore the 3-D arm, change supported physical
+parameters, place electrodes on the skin, run the FEM single-fibre simulation, view the electrode
+signals, compare against a baseline, export, and run analytical verification checks.
+Every plotted signal comes from `mesh.py` / `fem.py` / `fibre.py`; the app adds validation,
+caching and a UI. No Ansys installation or licence is needed: the solver is the project's own
+NumPy/SciPy FEM.
+
+### Setup (once)
+
+Requires Python >= 3.11 and Node.js >= 20 (tested: Python 3.14, Node 24, Windows 11).
+
+```
+python -m venv .venv
+.venv\Scripts\activate            # Windows   (Linux/macOS: source .venv/bin/activate)
+pip install -r requirements-app.txt
+cd frontend && npm install && npm run build && cd ..
+```
+
+### Run
+
+```
+python -m app                      # http://127.0.0.1:8000   (API + built frontend)
+```
+
+For frontend development run both `python -m app` (port 8000) and `cd frontend && npm run dev`
+(port 5173, proxies `/api` to 8000). API docs: http://127.0.0.1:8000/docs.
+
+First run on the default mesh solves 16 adjoint problems (~18 s); afterwards results reuse the
+cached lead fields and take ~0.1 s for fibre/timing changes, ~1 s per moved electrode, ~20 s
+for geometry or conductivity changes.
+
+### Tests
+
+```
+python -m pytest -q                # ~1 min: baseline vs stage 3, block benchmark, caching, validation, jobs, API
+```
+
+### How it fits together
+
+```
+app/
+├── schemas.py        immutable per-run SimConfig (defaults read from config.py), SI units
+├── params.py         parameter metadata: units, ranges, provenance (config.PROVENANCE), recompute level
+├── pipeline.py       SimConfig -> mesh.build_cylinder_mesh -> fem.assemble_stiffness -> fem.adjoint_K
+│                     -> fem.BasisSolutions -> fibre.simulate; validation + convergence/residual checks
+├── cache.py          LRU caches keyed by sha256(model version + every relevant input);
+│                     adjoint rows cached per electrode (memory + cache/app/)
+├── geometry.py       display surfaces = the mesh's own staircase tissue boundaries; labelled illustrations
+├── jobs.py           one worker thread, increasing sequence numbers, queued jobs superseded by newer ones
+├── server.py         FastAPI endpoints (also serves frontend/dist)
+└── verification/     registry of analytical checks (stacked blocks, adjoint reciprocity)
+frontend/src/         React + TypeScript, React Three Fiber (3-D), Plotly (signals); units.ts converts SI
+tests/                pytest suite
+```
+
+Changes to the numerical modules were limited to optional parameters with unchanged defaults:
+`mesh.build_cylinder_mesh(..., radii=None, sigma=None)`, `fem.skin_electrode_positions(..., r_skin=None)`,
+`config.sigma_array(labels, sigma=None)`, plus `config.PROVENANCE`, `DURATION_SINGLE`, `CG_RTOL`.
+The test suite checks that the default app run is bit-identical to the stage 2/3 code path.
+
+**Coordinates and units.** One system everywhere: right-handed (x, y, z) in metres, z = arm axis
+= fibre direction, origin on the axis at mid-length, θ = atan2(y, x) with θ = 0 on +x (default
+electrode side). The API is SI throughout; only `frontend/src/units.ts` converts to mm / ms / µV.
+
+**What a change recomputes** (shown next to every control):
+
+| change | recomputed | reused |
+|---|---|---|
+| radii, thicknesses, length, mesh spacing | mesh, A, all adjoint rows | – |
+| conductivities | A, all adjoint rows | mesh |
+| electrode positions / array / CG tolerance | adjoint rows of the electrodes that moved | mesh, A, other rows |
+| fibre depth / angle / cell length | basis points (Eq. 5, ms) | mesh, A, all rows |
+| NMJ, tendons, velocity, taper, radius, σ_in, duration, sampling | signal (Eq. 10, ms) | everything else |
+| camera, visibility, opacity | nothing | – |
+
+**Adding a verification formula.** Write a function returning `{"passed": ..., "summary": [...]}`,
+decorate it with `@register(...)` in a module under `app/verification/`, and import it in
+`app/verification/__init__.py`. It appears in the API, the Verification tab and the test suite.
+
+**Not yet available (shown greyed out in the UI, with reasons):** fibre tilt (fibres run along z;
+the conductivity tensor is diagonal), electrode contact area (point electrodes), electrode-skin
+impedance, separate biceps/triceps/brachialis regions (drawn only as labelled illustrations),
+Poisson ratio / deformation (no mechanical model), and Stage 4/5 (motor units, recruitment, timing):
+implemented as scripts but not wired into the app (`POST /api/simulations/future` is reserved and
+returns 501).
+
 ## Folder layout
 
 ```
